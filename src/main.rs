@@ -25,10 +25,8 @@ mod handlers;
 pub use handlers::*;
 
 const BLOCK_SIZE: usize = 64;
-
-widget_ids! {
-    pub struct Ids { canvas, plot, button, threshold_box, depth_box }
-}
+pub const DEFAULT_THRESHOLD: usize = 6;
+pub const DEFAULT_DEPTH: usize = 5;
 
 fn main() {
     run().unwrap();
@@ -38,9 +36,19 @@ fn run() -> Result<(), Error> {
     crossbeam::scope(|scope| {
         // Read in the target file and create sequence using timestamps
         let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
-        let target = Arc::new(Sound::from_path(&assets.join("Section_7_1.wav")).unwrap());
-        let timestamps: Vec<Timestamp> = audacity_labels_to_timestamps(&assets.join("vowel.txt")).unwrap();
-        let target_sequence = Arc::new(SoundSequence::from_timestamps(target.clone(), &timestamps[..]).unwrap());
+
+        let target_sequence = {
+            use std::borrow::Cow;
+
+            let target = Arc::new(Sound::from_path(&assets.join("inventing.wav")).unwrap());
+            println!("Source is {} samples", target.samples().len());
+            let partitioner = Partitioner::new(Cow::Borrowed(&target));
+            let splits = partitioner.threshold(DEFAULT_THRESHOLD).depth(DEFAULT_DEPTH).partition().unwrap();
+            println!("Found {} splits in original sound", splits.len());
+            let dict = SoundDictionary::from_segments(&target, &splits[..]);
+            let sequence = SoundSequence::new(dict.sounds);
+            Arc::new(sequence)
+        };
 
         // Initialize the command queues
         let (input_buffer_producer, input_buffer_receiver) = bounded_spsc_queue::make::<[f32; BLOCK_SIZE]>(65536);

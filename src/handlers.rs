@@ -18,16 +18,22 @@ use super::*;
 
 const BLOCK_SIZE: usize = 64;
 
+widget_ids! {
+    pub struct Ids { canvas, plot, reconstruct_button, play_button, threshold_box, depth_box }
+}
+
 pub fn gui_handler(audio_commands_producer: Producer<AudioHandlerEvent>, dictionary_commands_producer: Producer<DictionaryHandlerEvent>) -> Result<(), Error> {
-    use piston_window::{EventLoop, PistonWindow, UpdateEvent, WindowSettings};
-    const WIDTH: u32 = 800;
-    const HEIGHT: u32 = 600;
+    use piston_window::{EventLoop, PistonWindow, UpdateEvent, WindowSettings, AdvancedWindow};
+    const WIDTH: u32 = 400;
+    const HEIGHT: u32 = 200;
     let mut window: PistonWindow = 
         try!(WindowSettings::new("Control window", [WIDTH, HEIGHT])
             .opengl(piston_window::OpenGL::V3_2)
             .samples(4)
+            .decorated(false)
             .exit_on_esc(true)
             .build());
+    window.set_position([0, 0]);
     window.set_ups(60);
     let mut ui = conrod::UiBuilder::new().build();
     let ids = Ids::new(ui.widget_id_generator());
@@ -55,6 +61,9 @@ pub fn gui_handler(audio_commands_producer: Producer<AudioHandlerEvent>, diction
                     Key::Space => {
                         dictionary_commands_producer.push(DictionaryHandlerEvent::Refresh);
                     }
+                    Key::P => {
+                        dictionary_commands_producer.push(DictionaryHandlerEvent::Play);
+                    }
                     _ => { }
                 }
             }
@@ -66,11 +75,16 @@ pub fn gui_handler(audio_commands_producer: Producer<AudioHandlerEvent>, diction
             let ui = &mut ui.set_widgets();
             widget::Canvas::new().color(color::DARK_CHARCOAL).set(ids.canvas, ui);
 
-            let button = widget::Button::new()
+            let reconstruct_button = widget::Button::new()
                 .w_h(200., 50.)
                 .middle()
                 .label("Reconstruct")
-                .set(ids.button, ui);
+                .set(ids.reconstruct_button, ui);
+
+            let play_button = widget::Button::new()
+                .w_h(200., 20.)
+                .label("Play")
+                .set(ids.play_button, ui);
             
             for edit in widget::TextBox::new(&threshold_text)
                 .align_text_middle()
@@ -104,8 +118,12 @@ pub fn gui_handler(audio_commands_producer: Producer<AudioHandlerEvent>, diction
                 }
             }
 
-            if button.was_clicked() {
+            if reconstruct_button.was_clicked() {
                 dictionary_commands_producer.push(DictionaryHandlerEvent::Refresh);
+            }
+
+            if play_button.was_clicked() {
+                dictionary_commands_producer.push(DictionaryHandlerEvent::Play);
             }
 
         });
@@ -131,7 +149,8 @@ pub fn audio_handler(input_buffer_producer: Producer<[f32; BLOCK_SIZE]>, audio_p
 
     let pa = try!(PortAudio::new());
     let mut frames_elapsed: usize = 0;
-    let settings: DuplexStreamSettings<f32, f32> = try!(pa.default_duplex_stream_settings(1, 1, 44100., BLOCK_SIZE as u32).map_err(Error::PortAudio));
+    let settings: DuplexStreamSettings<f32, f32> = 
+        try!(pa.default_duplex_stream_settings(1, 1, 44100., BLOCK_SIZE as u32).map_err(Error::PortAudio));
     let callback = move |DuplexStreamCallbackArgs { in_buffer, out_buffer, .. }| {
 
         unsafe {
@@ -175,8 +194,9 @@ pub fn dictionary_handler(input_buffer_receiver: Consumer<[f32; BLOCK_SIZE]>, ta
 
     let mut sound = Sound::from_samples(Vec::<f64>::with_capacity(65536), 44100., None, None);
     let mut buf = Vec::<f64>::with_capacity(65536);
-    let mut depth = 12;
-    let mut threshold = 7;
+    let mut depth = DEFAULT_DEPTH;
+    let mut threshold = DEFAULT_THRESHOLD;
+    let mut other_sound = Sound::from_samples(Vec::<f64>::new(), 44100., None, None);
 
     loop {
         while let Some(incoming_sound) = input_buffer_receiver.try_pop() {
@@ -196,12 +216,13 @@ pub fn dictionary_handler(input_buffer_receiver: Consumer<[f32; BLOCK_SIZE]>, ta
                 } else {
                     let dict = SoundDictionary::from_segments(&sound, &splits[..]);
                     println!("nsegs: {}", dict.sounds.len());
-                    let new_sound = target_sequence.clone_from_dictionary(&dict).unwrap().to_sound();
-                    println!("samps: {}", new_sound.samples().len());
-
-                    for s in new_sound.samples() {
-                        audio_playback_queue.push(*s);
-                    }
+                    other_sound = target_sequence.clone_from_dictionary(&dict).unwrap().to_sound();
+                    println!("samps: {}", other_sound.samples().len());
+                }
+            }
+            Some(Play) => {
+                for s in other_sound.samples() {
+                    audio_playback_queue.push(*s);
                 }
             }
             Some(SetThreshold(x)) => { threshold = x; }
