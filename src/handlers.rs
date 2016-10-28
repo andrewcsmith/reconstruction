@@ -200,14 +200,10 @@ pub fn dictionary_handler(input_buffer_receiver: Consumer<[f32; BLOCK_SIZE]>, ta
     let mut threshold = DEFAULT_THRESHOLD;
     let mut other_sound = Sound::from_samples(Vec::<f64>::new(), 44100., None, None);
 
-    // Only need mutable access for the training
-    let mut partitioner = {
-        let sound = target_sequence.to_sound();
-        let mut partitioner = Partitioner::new(Cow::Owned(sound));
-        partitioner = partitioner.threshold(threshold).depth(depth);
-        partitioner.train();
-        partitioner
-    };
+    let target = target_sequence.to_sound();
+    let mut partitioner = Partitioner::new(Cow::Owned(target))
+        .threshold(threshold).depth(depth);
+    partitioner.train();
 
     loop {
         while let Some(incoming_sound) = input_buffer_receiver.try_pop() {

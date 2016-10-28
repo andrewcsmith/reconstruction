@@ -27,8 +27,8 @@ mod handlers;
 pub use handlers::*;
 
 const BLOCK_SIZE: usize = 64;
-pub const DEFAULT_THRESHOLD: usize = 6;
-pub const DEFAULT_DEPTH: usize = 5;
+pub const DEFAULT_THRESHOLD: usize = 5;
+pub const DEFAULT_DEPTH: usize = 4;
 
 fn main() {
     run().unwrap();
