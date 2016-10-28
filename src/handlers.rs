@@ -1,3 +1,4 @@
+extern crate rusty_machine;
 extern crate soundsym;
 extern crate portaudio;
 extern crate piston_window;
@@ -9,6 +10,7 @@ use soundsym::*;
 use portaudio::{Continue, DuplexStreamCallbackArgs, DuplexStreamSettings, PortAudio};
 use bounded_spsc_queue::{Producer, Consumer};
 use crossbeam::sync::SegQueue;
+use rusty_machine::prelude::*;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -198,6 +200,15 @@ pub fn dictionary_handler(input_buffer_receiver: Consumer<[f32; BLOCK_SIZE]>, ta
     let mut threshold = DEFAULT_THRESHOLD;
     let mut other_sound = Sound::from_samples(Vec::<f64>::new(), 44100., None, None);
 
+    // Only need mutable access for the training
+    let mut partitioner = {
+        let sound = target_sequence.to_sound();
+        let mut partitioner = Partitioner::new(Cow::Owned(sound));
+        partitioner = partitioner.threshold(threshold).depth(depth);
+        partitioner.train();
+        partitioner
+    };
+
     loop {
         while let Some(incoming_sound) = input_buffer_receiver.try_pop() {
             for s in incoming_sound.iter() {
@@ -209,8 +220,11 @@ pub fn dictionary_handler(input_buffer_receiver: Consumer<[f32; BLOCK_SIZE]>, ta
 
         match dictionary_commands_receiver.try_pop() {
             Some(Refresh) => {
-                let partitioner = Partitioner::new(Cow::Borrowed(&sound));
-                let splits = partitioner.threshold(threshold).depth(depth).partition().unwrap();
+                let rows = sound.mfccs().len() / NCOEFFS;
+                let cols = NCOEFFS;
+                let data = Matrix::new(rows, cols, sound.mfccs().clone());
+                let predictions = partitioner.predict(&data).unwrap();
+                let splits = partitioner.partition(predictions).unwrap();
                 if splits.len() == 0 { 
                     println!("no possible partitions found");
                 } else {
@@ -225,8 +239,14 @@ pub fn dictionary_handler(input_buffer_receiver: Consumer<[f32; BLOCK_SIZE]>, ta
                     audio_playback_queue.push(*s);
                 }
             }
-            Some(SetThreshold(x)) => { threshold = x; }
-            Some(SetDepth(x)) => { depth = x; }
+            Some(SetThreshold(x)) => { 
+                threshold = x; 
+                partitioner = partitioner.threshold(threshold);
+            }
+            Some(SetDepth(x)) => { 
+                depth = x; 
+                partitioner = partitioner.depth(depth);
+            }
             Some(Quit) => { return; }
             _ => { }
         }

@@ -10,6 +10,7 @@ dependencies = [
  "piston_window 0.52.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pistoncore-input 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "portaudio 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusty-machine 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "soundsym 0.1.0",
  "vox_box 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -845,6 +846,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusty-machine"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "num 0.1.36 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rulinalg 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "sample"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1177,6 +1188,7 @@ dependencies = [
 "checksum rustc_version 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)" = "c5f5376ea5e30ce23c03eb77cbe4962b988deead10910c372b226388b594c084"
 "checksum rustfft 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "84e59503875a5f7a3768601079b7bb43e8954055ecfe78c6c993e8745eb717d9"
 "checksum rusttype 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "c3c64ffc93b0cc5a6f5e5e84da2a4082b0271e0a1dd76e821bdac570bda7797e"
+"checksum rusty-machine 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "96eed4c9779dd5f3dfa6bef32a6566f19aa35d8ce89f3970ecaaad5b16abc74b"
 "checksum sample 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "80fb6a09c9909286e083dd666073427801c875452c6aada9e4f56bf98a10d76c"
 "checksum scoped_threadpool 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)" = "3ef399c8893e8cb7aa9696e895427fab3a6bf265977bb96e126f24ddd2cda85a"
 "checksum semver 0.1.20 (registry+https://github.com/rust-lang/crates.io-index)" = "d4f410fedcf71af0345d7607d246e7ad15faaadd49d240ee3b24e5dc21a820ac"

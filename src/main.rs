@@ -1,3 +1,4 @@
+extern crate rusty_machine;
 extern crate soundsym;
 extern crate vox_box;
 extern crate portaudio;
@@ -12,6 +13,7 @@ extern crate input;
 
 use soundsym::*;
 use crossbeam::sync::SegQueue;
+use rusty_machine::prelude::*;
 
 use std::sync::Arc;
 
@@ -42,8 +44,22 @@ fn run() -> Result<(), Error> {
 
             let target = Arc::new(Sound::from_path(&assets.join("inventing.wav")).unwrap());
             println!("Source is {} samples", target.samples().len());
-            let partitioner = Partitioner::new(Cow::Borrowed(&target));
-            let splits = partitioner.threshold(DEFAULT_THRESHOLD).depth(DEFAULT_DEPTH).partition().unwrap();
+
+            // Only need mutable access for the training
+            let partitioner = {
+                let mut partitioner = Partitioner::new(Cow::Borrowed(&target));
+                partitioner = partitioner.threshold(DEFAULT_THRESHOLD).depth(DEFAULT_DEPTH);
+                partitioner.train();
+                partitioner
+            };
+
+
+            let rows = target.mfccs().len() / NCOEFFS;
+            let cols = NCOEFFS;
+            let data = Matrix::new(rows, cols, target.mfccs().clone());
+            let predictions = partitioner.predict(&data).unwrap();
+            let splits = partitioner.partition(predictions).unwrap();
+
             println!("Found {} splits in original sound", splits.len());
             let dict = SoundDictionary::from_segments(&target, &splits[..]);
             let sequence = SoundSequence::new(dict.sounds);

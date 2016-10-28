@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Andrew Smith <andrewchristophersmith@gmail.com>"]
 
 [dependencies]
+rusty-machine = "*"
 soundsym = { path = "/Users/acsmith/workspaces/music/rust/soundsym" }
 vox_box = "0.2.3"
 portaudio = "0.7.0"
