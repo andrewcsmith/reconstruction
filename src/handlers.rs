@@ -18,41 +18,71 @@ use std::mem::transmute;
 
 use super::*;
 
+// Import relevant structs
+use piston_window::{EventLoop, PistonWindow, UpdateEvent, WindowSettings, AdvancedWindow};
+use conrod::{color, widget, Colorable, Positionable, Sizeable, Widget, Labelable};
+use input::{Event, Input, Button};
+use input::keyboard::Key;
+
+// Set window dimensions
+const WIDTH: u32 = 800;
+const HEIGHT: u32 = 600;
+
 const BLOCK_SIZE: usize = 64;
 
 widget_ids! {
-    pub struct Ids { canvas, plot, reconstruct_button, play_button, threshold_box, depth_box }
+    pub struct Ids { 
+        canvas, 
+        plot, 
+        reconstruct_button, 
+        play_button, 
+        threshold_box, 
+        depth_box,
+        audio_device,
+    }
+}
+
+struct ReconstructionApp {
+    threshold_text: String,
+    depth_text: String,
+    window: PistonWindow,
+}
+
+impl ReconstructionApp {
+    pub fn new() -> Result<ReconstructionApp, Error> {
+        // instantiate window
+        let mut window: PistonWindow = try!(WindowSettings::new("Reconstruction", [WIDTH, HEIGHT])
+                          .opengl(piston_window::OpenGL::V3_2)
+                          .samples(4)
+                          .decorated(false)
+                          .exit_on_esc(true)
+                          .build());
+
+        window.set_position([0, 0]);
+        window.set_ups(60);
+
+        Ok(ReconstructionApp {
+            threshold_text: String::new(),
+            depth_text: String::new(),
+            window: window,
+        })
+    }
 }
 
 pub fn gui_handler(audio_commands_producer: Producer<AudioHandlerEvent>, dictionary_commands_producer: Producer<DictionaryHandlerEvent>) -> Result<(), Error> {
-    use piston_window::{EventLoop, PistonWindow, UpdateEvent, WindowSettings, AdvancedWindow};
-    const WIDTH: u32 = 400;
-    const HEIGHT: u32 = 200;
-    let mut window: PistonWindow = 
-        try!(WindowSettings::new("Control window", [WIDTH, HEIGHT])
-            .opengl(piston_window::OpenGL::V3_2)
-            .samples(4)
-            .decorated(false)
-            .exit_on_esc(true)
-            .build());
-    window.set_position([0, 0]);
-    window.set_ups(60);
+    let mut app = try!(ReconstructionApp::new());
     let mut ui = conrod::UiBuilder::new().build();
     let ids = Ids::new(ui.widget_id_generator());
+
     let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
-    let font_path = assets.join("LH-Line1-Sans-Thin.ttf");
-    try!(ui.fonts.insert_from_file(font_path));
-    let mut text_texture_cache = conrod::backend::piston_window::GlyphCache::new(&mut window, WIDTH, HEIGHT);
+
+    try!(ui.fonts.insert_from_file(assets.join("LH-Line1-Sans-Thin.ttf")));
+    let mut text_texture_cache = conrod::backend::piston_window::GlyphCache::new(&mut app.window, WIDTH, HEIGHT);
     let image_map = conrod::image::Map::new();
 
-    let mut threshold_text = String::new();
-    let mut depth_text = String::new();
+    while let Some(event) = app.window.next() {
 
-    while let Some(event) = window.next() {
-        use input::{Event, Input, Button};
-        use input::keyboard::Key;
-
-        if let Some(e) = conrod::backend::piston_window::convert_event(event.clone(), &window) {
+        if let Some(e) = conrod::backend::piston_window::convert_event(event.clone(), &app.window) {
             ui.handle_event(e);
         }
 
@@ -60,12 +90,8 @@ pub fn gui_handler(audio_commands_producer: Producer<AudioHandlerEvent>, diction
         match event {
             Event::Input(Input::Press(Button::Keyboard(key))) => { 
                 match key {
-                    Key::Space => {
-                        dictionary_commands_producer.push(DictionaryHandlerEvent::Refresh);
-                    }
-                    Key::P => {
-                        dictionary_commands_producer.push(DictionaryHandlerEvent::Play);
-                    }
+                    Key::Space => dictionary_commands_producer.push(DictionaryHandlerEvent::Refresh)
+                    Key::P => dictionary_commands_producer.push(DictionaryHandlerEvent::Play)
                     _ => { }
                 }
             }
@@ -73,64 +99,65 @@ pub fn gui_handler(audio_commands_producer: Producer<AudioHandlerEvent>, diction
         }
 
         event.update(|_| {
-            use conrod::{color, widget, Colorable, Positionable, Sizeable, Widget, Labelable};
             let ui = &mut ui.set_widgets();
             widget::Canvas::new().color(color::DARK_CHARCOAL).set(ids.canvas, ui);
 
-            let reconstruct_button = widget::Button::new()
+            // Add reconstruct button
+            if widget::Button::new()
                 .w_h(200., 50.)
                 .middle()
                 .label("Reconstruct")
-                .set(ids.reconstruct_button, ui);
+                .set(ids.reconstruct_button, ui)
+                .was_clicked() 
+            {
+                dictionary_commands_producer.push(DictionaryHandlerEvent::Refresh);
+            }
 
-            let play_button = widget::Button::new()
-                .w_h(200., 20.)
+            // Add play button
+            if widget::Button::new()
+                .w_h(200., 50.)
                 .label("Play")
-                .set(ids.play_button, ui);
+                .set(ids.play_button, ui)
+                .was_clicked()
+            {
+                dictionary_commands_producer.push(DictionaryHandlerEvent::Play);
+            }
+
             
-            for edit in widget::TextBox::new(&threshold_text)
+            for edit in widget::TextBox::new(&app.threshold_text)
                 .align_text_middle()
                 .set(ids.threshold_box, ui) 
             {
                 match edit {
                     widget::text_box::Event::Update(new_text) => {
-                        threshold_text = new_text;
+                        app.threshold_text = new_text;
                     }
                     widget::text_box::Event::Enter => {
-                        if let Ok(new_threshold) = threshold_text.parse::<usize>() {
+                        if let Ok(new_threshold) = app.threshold_text.parse::<usize>() {
                             dictionary_commands_producer.push(DictionaryHandlerEvent::SetThreshold(new_threshold));
                         }
                     }
                 }
             }
 
-            for edit in widget::TextBox::new(&depth_text) 
+            for edit in widget::TextBox::new(&app.depth_text) 
                 .align_text_middle()
                 .set(ids.depth_box, ui)
             {
                 match edit {
                     widget::text_box::Event::Update(new_text) => {
-                        depth_text = new_text;
+                        app.depth_text = new_text;
                     }
                     widget::text_box::Event::Enter => {
-                        if let Ok(new_depth) = depth_text.parse::<usize>() {
+                        if let Ok(new_depth) = app.depth_text.parse::<usize>() {
                             dictionary_commands_producer.push(DictionaryHandlerEvent::SetDepth(new_depth));
                         }
                     }
                 }
             }
-
-            if reconstruct_button.was_clicked() {
-                dictionary_commands_producer.push(DictionaryHandlerEvent::Refresh);
-            }
-
-            if play_button.was_clicked() {
-                dictionary_commands_producer.push(DictionaryHandlerEvent::Play);
-            }
-
         });
 
-        window.draw_2d(&event, |c, g| {
+        app.window.draw_2d(&event, |c, g| {
             if let Some(primitives) = ui.draw_if_changed() {
                 fn texture_from_image<T>(img: &T) -> &T { img };
                 conrod::backend::piston_window::draw(c, g, primitives,

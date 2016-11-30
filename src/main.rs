@@ -53,7 +53,6 @@ fn run() -> Result<(), Error> {
                 partitioner
             };
 
-
             let rows = target.mfccs().len() / NCOEFFS;
             let cols = NCOEFFS;
             let data = Matrix::new(rows, cols, target.mfccs().clone());
@@ -76,12 +75,11 @@ fn run() -> Result<(), Error> {
         let apq2 = audio_playback_queue.clone();
         scope.spawn(move || dictionary_handler(input_buffer_receiver, target_sequence, apq1, dictionary_commands_receiver));
         scope.spawn(move || audio_handler(input_buffer_producer, apq2, audio_commands_receiver));
-        
         match gui_handler(audio_commands_producer, dictionary_commands_producer) {
             Err(e) => { 
                 println!("abort! {}", e);
             }
-            _ => { }
+            Ok(_) => { }
         }
     });
 
