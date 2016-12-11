@@ -1,21 +1,20 @@
-extern crate rusty_machine;
 extern crate soundsym;
 extern crate vox_box;
 extern crate portaudio;
 extern crate hound;
 extern crate crossbeam;
 extern crate bounded_spsc_queue;
-extern crate piston_window;
 extern crate find_folder;
-extern crate input;
+extern crate rusty_machine;
+extern crate event_loop;
 
 #[macro_use] extern crate conrod;
 
-use soundsym::*;
 use crossbeam::sync::SegQueue;
-use rusty_machine::prelude::*;
 
 use std::sync::Arc;
+use std::cell::RefCell;
+use std::sync::mpsc;
 
 mod error;
 pub use error::Error;
@@ -26,56 +25,23 @@ pub use events::*;
 mod handlers;
 pub use handlers::*;
 
-const BLOCK_SIZE: usize = 64;
-pub const DEFAULT_THRESHOLD: usize = 5;
-pub const DEFAULT_DEPTH: usize = 4;
-
 fn main() {
-    run().unwrap();
+    run::<DictionaryHandlerEvent>();
 }
 
-fn run() -> Result<(), Error> {
+fn run<T>() -> Result<(), Error<T>> {
     crossbeam::scope(|scope| {
-        // Read in the target file and create sequence using timestamps
-        let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
-
-        let target_sequence = {
-            use std::borrow::Cow;
-
-            let target = Arc::new(Sound::from_path(&assets.join("inventing.wav")).unwrap());
-            println!("Source is {} samples", target.samples().len());
-
-            // Only need mutable access for the training
-            let partitioner = {
-                let mut partitioner = Partitioner::new(Cow::Borrowed(&target));
-                partitioner = partitioner.threshold(DEFAULT_THRESHOLD).depth(DEFAULT_DEPTH);
-                partitioner.train();
-                partitioner
-            };
-
-            let rows = target.mfccs().len() / NCOEFFS;
-            let cols = NCOEFFS;
-            let data = Matrix::new(rows, cols, target.mfccs().clone());
-            let predictions = partitioner.predict(&data).unwrap();
-            let splits = partitioner.partition(predictions).unwrap();
-
-            println!("Found {} splits in original sound", splits.len());
-            let dict = SoundDictionary::from_segments(&target, &splits[..]);
-            let sequence = SoundSequence::new(dict.sounds);
-            Arc::new(sequence)
-        };
-
-        // Initialize the command queues
-        let (input_buffer_producer, input_buffer_receiver) = bounded_spsc_queue::make::<[f32; BLOCK_SIZE]>(65536);
-        let (dictionary_commands_producer, dictionary_commands_receiver) = bounded_spsc_queue::make::<DictionaryHandlerEvent>(256);
         let (audio_commands_producer, audio_commands_receiver) = bounded_spsc_queue::make::<AudioHandlerEvent>(256);
 
         let audio_playback_queue = Arc::new(SegQueue::<f64>::new());
+        let (dict_prod, dict_cons) = mpsc::channel::<DictionaryHandlerEvent>();
+        let (gui_prod, gui_recv) = mpsc::channel::<GuiHandlerEvent>();
+        let audio_dict_prod = dict_prod.clone();
         let apq1 = audio_playback_queue.clone();
         let apq2 = audio_playback_queue.clone();
-        scope.spawn(move || dictionary_handler(input_buffer_receiver, target_sequence, apq1, dictionary_commands_receiver));
-        scope.spawn(move || audio_handler(input_buffer_producer, apq2, audio_commands_receiver));
-        match gui_handler(audio_commands_producer, dictionary_commands_producer) {
+        scope.spawn(move || dictionary_handler(apq1, dict_cons));
+        scope.spawn(move || audio_handler::<DictionaryHandlerEvent>(apq2, audio_commands_receiver, audio_dict_prod, gui_prod));
+        match gui_handler::<DictionaryHandlerEvent>(audio_commands_producer, dict_prod, gui_recv) {
             Err(e) => { 
                 println!("abort! {}", e);
             }
