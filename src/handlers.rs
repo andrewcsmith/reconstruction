@@ -4,7 +4,7 @@ extern crate portaudio;
 extern crate bounded_spsc_queue;
 extern crate conrod;
 extern crate find_folder;
-extern crate event_loop;
+extern crate piston_window;
 
 use soundsym::*;
 use portaudio::{Continue, DuplexStreamCallbackArgs, DuplexStreamSettings, PortAudio, StreamParameters, DeviceIndex};
@@ -22,11 +22,10 @@ use std::{thread, time};
 use super::*;
 
 // Import relevant structs
-use conrod::backend::piston::{self, Window, WindowEvents};
-use conrod::backend::piston::window::AdvancedWindow;
-use conrod::backend::piston::event::UpdateEvent;
+use piston_window::{PistonWindow, Window, AdvancedWindow, G2d, G2dTexture, Texture, TextureSettings, WindowSettings};
+use piston_window::texture::UpdateTexture;
+use conrod::backend::piston::event::{convert, UpdateEvent};
 use conrod::{color, widget, Colorable, Positionable, Sizeable, Widget, Labelable};
-use event_loop::EventLoop;
 
 // Set window dimensions
 const WIDTH: u32 = 800;
@@ -59,13 +58,13 @@ struct ReconstructionApp {
     devices: Option<Vec<(DeviceIndex, String)>>,
     in_device: Option<usize>,
     out_device: Option<usize>,
-    window: Window,
+    window: PistonWindow,
 }
 
 impl ReconstructionApp {
     pub fn new<T>() -> Result<ReconstructionApp, Error<T>> {
         // instantiate window
-        let mut window: Window = try!(piston::window::WindowSettings::new("Reconstruction", [WIDTH, HEIGHT])
+        let mut window: PistonWindow = try!(WindowSettings::new("Reconstruction", [WIDTH, HEIGHT])
                           .samples(4)
                           .decorated(true)
                           .exit_on_esc(true)
@@ -92,11 +91,28 @@ pub fn gui_handler<'a, T>(audio_commands_producer: Producer<AudioHandlerEvent>, 
     let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
 
     try!(ui.fonts.insert_from_file(assets.join("LH-Line1-Sans-Thin.ttf")));
-    let mut text_texture_cache = piston::gfx::GlyphCache::new(&mut app.window, WIDTH, HEIGHT);
-    let image_map = conrod::image::Map::new();
-    let mut events = WindowEvents::new().swap_buffers(true);
 
-    while let Some(event) = app.window.next_event(&mut events) {
+    let mut text_vertex_data = Vec::new();
+
+    let mut glyph_cache = {
+        const SCALE_TOLERANCE: f32 = 0.1;
+        const POSITION_TOLERANCE: f32 = 0.1;
+        let cache = conrod::text::GlyphCache::new(WIDTH, HEIGHT, SCALE_TOLERANCE, POSITION_TOLERANCE);
+        cache
+    };
+
+    let mut text_texture_cache = {
+        let buffer_len = WIDTH as usize * HEIGHT as usize;
+        let init = vec![128; buffer_len];
+        let settings = TextureSettings::new();
+        let factory = &mut app.window.factory;
+        let texture = G2dTexture::from_memory_alpha(factory, &init, WIDTH, HEIGHT, &settings).unwrap();
+        texture
+    };
+        
+    let image_map = conrod::image::Map::new();
+
+    while let Some(event) = app.window.next() {
         while let Ok(handler_event) = gui_recv.try_recv() {
             match handler_event {
                 GuiHandlerEvent::Devices(d) => app.devices = Some(d),
@@ -105,7 +121,7 @@ pub fn gui_handler<'a, T>(audio_commands_producer: Producer<AudioHandlerEvent>, 
             }
         }
 
-        if let Some(e) = piston::window::convert_event(event.clone(), &app.window) {
+        if let Some(e) = convert(event.clone(), app.window.size().width as f64, app.window.size().height as f64) {
             use conrod::input::Button::*;
             // Handle all the basic Raw events in the entire window
             if let conrod::event::Input::Press(button) = e {
@@ -238,11 +254,29 @@ pub fn gui_handler<'a, T>(audio_commands_producer: Producer<AudioHandlerEvent>, 
 
         app.window.draw_2d(&event, |c, g| {
             if let Some(primitives) = ui.draw_if_changed() {
+                let cache_queued_glyphs = |graphics: &mut G2d,
+                                           cache: &mut G2dTexture,
+                                           rect: conrod::text::rt::Rect<u32>,
+                                           data: &[u8]|
+                {
+                    let offset = [rect.min.x, rect.min.y];
+                    let size = [rect.width(), rect.height()];
+                    let format = piston_window::texture::Format::Rgba8;
+                    let encoder = &mut graphics.encoder;
+                    text_vertex_data.clear();
+                    text_vertex_data.extend(data.iter().flat_map(|&b| vec![255, 255, 255, b]));
+                    UpdateTexture::update(cache, encoder, format, &text_vertex_data[..], offset, size)
+                        .expect("failed to update texture")
+                };
+                    
                 fn texture_from_image<T>(img: &T) -> &T { img };
-                piston::window::draw(c, g, primitives,
-                                     &mut text_texture_cache,
-                                     &image_map,
-                                     texture_from_image);
+                conrod::backend::piston::draw::primitives(primitives,
+                                                          c, g,
+                                                          &mut text_texture_cache,
+                                                          &mut glyph_cache,
+                                                          &image_map,
+                                                          cache_queued_glyphs,
+                                                          texture_from_image);
             }
         });
     }

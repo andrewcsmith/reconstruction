@@ -6,7 +6,7 @@ extern crate crossbeam;
 extern crate bounded_spsc_queue;
 extern crate find_folder;
 extern crate rusty_machine;
-extern crate event_loop;
+extern crate piston_window;
 
 #[macro_use] extern crate conrod;
 
