@@ -11,6 +11,6 @@ hound = "2.0"
 bounded-spsc-queue = "0.1.2"
 rusty-machine = "0.5"
 crossbeam = "0.2"
-conrod = { version = "0.50", features = ["piston"] }
+conrod = { version = "0.51", features = ["piston"] }
 find_folder = "0.3"
 piston_window = "0.63"

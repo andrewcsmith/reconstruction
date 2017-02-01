@@ -218,7 +218,7 @@ pub fn gui_handler<'a, T>(audio_commands_producer: Producer<AudioHandlerEvent>, 
             }
             
             for edit in widget::TextBox::new(&app.threshold_text)
-                .align_text_middle()
+                .center_justify()
                 .w_h(200., 50.)
                 .down_from(ids.play_button, 20.)
                 .set(ids.threshold_box, ui) 
@@ -236,7 +236,7 @@ pub fn gui_handler<'a, T>(audio_commands_producer: Producer<AudioHandlerEvent>, 
             }
 
             for edit in widget::TextBox::new(&app.depth_text) 
-                .align_text_middle()
+                .center_justify()
                 .set(ids.depth_box, ui)
             {
                 match edit {
